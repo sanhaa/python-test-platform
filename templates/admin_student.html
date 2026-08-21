@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block page_title %}{{ record.name }} · 관리자{% endblock %}
+{% block page_title %}{{ record.knox_id }} · 관리자{% endblock %}
 {% block body_class %}admin-page{% endblock %}
 
 {% block content %}
@@ -7,7 +7,7 @@
   <header class="admin-head">
     <div>
       <p class="eyebrow"><a href="{{ url_for('admin') }}">← 응시 현황</a></p>
-      <h1>{{ record.name }}</h1>
+      <h1>{{ record.knox_id }}</h1>
       <p class="lead small">
         {% if record.submitted %}
           제출 완료 · {{ record.submitted_at }} ·
@@ -19,7 +19,7 @@
     </div>
     <div class="admin-actions">
       <form method="post" action="{{ url_for('admin_reset') }}"
-            onsubmit="return confirm('{{ record.name }} 님의 답안을 초기화할까요?');">
+            onsubmit="return confirm('{{ record.knox_id }} 님의 답안을 초기화할까요?');">
         <input type="hidden" name="key" value="{{ record.key }}">
         <input type="hidden" name="next" value="{{ url_for('admin_student', key=record.key) }}">
         <button class="btn">답안 초기화</button>

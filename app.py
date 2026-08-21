@@ -67,18 +67,18 @@ def current_student():
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        name = " ".join((request.form.get("name") or "").split())
-        if not name:
-            flash("이름을 입력해 주세요.")
+        knox_id = "".join((request.form.get("knox_id") or "").split())
+        if not knox_id:
+            flash("Knox ID를 입력해 주세요.")
             return redirect(url_for("login"))
 
-        if name.lower() == ADMIN_NAME:
+        if knox_id.lower() == ADMIN_NAME:
             session["is_admin"] = True
             return redirect(url_for("admin"))
 
         session.pop("is_admin", None)
-        record = storage.start_student(name)
-        session["student"] = record["name"]
+        record = storage.start_student(knox_id)
+        session["student"] = record["knox_id"]
         if record.get("submitted"):
             return redirect(url_for("result"))
         return redirect(url_for("exam"))
@@ -99,10 +99,10 @@ def logout():
 
 @app.route("/exam")
 def exam():
-    name = current_student()
-    if not name:
+    knox_id = current_student()
+    if not knox_id:
         return redirect(url_for("login"))
-    record = storage.get_student(name)
+    record = storage.get_student(knox_id)
     if record is None:
         session.clear()
         return redirect(url_for("login"))
@@ -110,14 +110,14 @@ def exam():
         return redirect(url_for("result"))
     return render_template("exam.html", title=TITLE, subtitle=SUBTITLE,
                            questions=QUESTIONS, total=TOTAL_QUESTIONS,
-                           name=record["name"], answers=record.get("answers", {}))
+                           knox_id=record["knox_id"], answers=record.get("answers", {}))
 
 
 @app.route("/api/answer", methods=["POST"])
 def api_answer():
     """문항 답안 자동 저장."""
-    name = current_student()
-    if not name:
+    knox_id = current_student()
+    if not knox_id:
         return jsonify({"ok": False, "error": "not_logged_in"}), 401
     payload = request.get_json(silent=True) or {}
     qid = payload.get("qid")
@@ -125,7 +125,7 @@ def api_answer():
     if qid is None or int(qid) not in QUESTION_BY_ID:
         return jsonify({"ok": False, "error": "bad_question"}), 400
 
-    record = storage.save_answer(name, qid, value)
+    record = storage.save_answer(knox_id, qid, value)
     if record is None:
         return jsonify({"ok": False, "error": "no_record"}), 404
     if record.get("submitted"):
@@ -140,10 +140,10 @@ def api_answer():
 
 @app.route("/submit", methods=["POST"])
 def submit():
-    name = current_student()
-    if not name:
+    knox_id = current_student()
+    if not knox_id:
         return redirect(url_for("login"))
-    record = storage.get_student(name)
+    record = storage.get_student(knox_id)
     if record is None:
         session.clear()
         return redirect(url_for("login"))
@@ -158,16 +158,16 @@ def submit():
               ", ".join(str(m) for m in missing))
         return redirect(url_for("exam"))
 
-    storage.submit(name)
+    storage.submit(knox_id)
     return redirect(url_for("result"))
 
 
 @app.route("/result")
 def result():
-    name = current_student()
-    if not name:
+    knox_id = current_student()
+    if not knox_id:
         return redirect(url_for("login"))
-    record = storage.get_student(name)
+    record = storage.get_student(knox_id)
     if record is None:
         session.clear()
         return redirect(url_for("login"))
@@ -241,7 +241,7 @@ def admin_reset():
     key = request.form.get("key", "")
     record = storage.get_student(key)
     if record and storage.reset_student(key):
-        flash("'%s' 님의 답안을 초기화했습니다. 다시 응시할 수 있습니다." % record["name"])
+        flash("%s 님의 답안을 초기화했습니다. 다시 응시할 수 있습니다." % record["knox_id"])
     else:
         flash("초기화할 응시자를 찾지 못했습니다.")
     return redirect(request.form.get("next") or url_for("admin"))
@@ -254,7 +254,35 @@ def admin_delete():
     key = request.form.get("key", "")
     record = storage.get_student(key)
     if record and storage.delete_student(key):
-        flash("'%s' 님의 기록을 삭제했습니다." % record["name"])
+        flash("%s 님의 기록을 삭제했습니다." % record["knox_id"])
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/reset-all", methods=["POST"])
+def admin_reset_all():
+    """전체 응시자 답안 초기화. 명단은 남기고 다시 응시하게 한다."""
+    if not _require_admin():
+        return redirect(url_for("login"))
+    count, backup_path = storage.reset_all()
+    if count:
+        flash("응시자 %d명의 답안을 모두 초기화했습니다. 직전 기록은 %s 에 백업했습니다."
+              % (count, os.path.basename(backup_path)))
+    else:
+        flash("초기화할 응시 기록이 없습니다.")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/delete-all", methods=["POST"])
+def admin_delete_all():
+    """전체 응시 기록 삭제. 명단까지 비운다."""
+    if not _require_admin():
+        return redirect(url_for("login"))
+    count, backup_path = storage.delete_all()
+    if count:
+        flash("응시 기록 %d건을 모두 삭제했습니다. 직전 기록은 %s 에 백업했습니다."
+              % (count, os.path.basename(backup_path)))
+    else:
+        flash("삭제할 응시 기록이 없습니다.")
     return redirect(url_for("admin"))
 
 
@@ -277,14 +305,14 @@ def admin_export():
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    header = ["이름", "제출여부", "제출시각", "점수"]
+    header = ["Knox ID", "제출여부", "제출시각", "점수"]
     header += ["%d번" % q["id"] for q in QUESTIONS]
     header += ["%d번 답안" % q["id"] for q in QUESTIONS]
     writer.writerow(header)
 
     for record in storage.load_all():
         graded = grade(record)
-        row = [record.get("name", ""),
+        row = [record.get("knox_id", ""),
                "제출" if record.get("submitted") else "미제출",
                record.get("submitted_at") or "",
                graded["score"] if record.get("submitted") else ""]

@@ -5,7 +5,7 @@
 <div class="result-wrap">
   <header class="result-head">
     <p class="eyebrow">제출 완료</p>
-    <h1>{{ record.name }} 님, 제출이 완료되었습니다.</h1>
+    <h1>{{ record.knox_id }} 님, 제출이 완료되었습니다.</h1>
     <p class="lead">제출 시각 {{ record.submitted_at }}</p>
     {% if graded %}
       <p class="score-line">점수 <b>{{ graded.score }}</b> / {{ graded.max_score }}점</p>

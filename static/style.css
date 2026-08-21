@@ -330,6 +330,24 @@ thead .sticky-col { background: #fafbfc; z-index: 2; }
 .row-actions form { margin: 0; }
 .legend { font-size: 12px; color: var(--ink-mute); margin: 10px 2px 34px; }
 
+/* 전체 초기화 영역 */
+.danger-title { margin-top: 40px; color: var(--no); }
+.danger-zone {
+  background: var(--surface); border: 1px solid #f0cdc9;
+  border-radius: 14px; overflow: hidden;
+}
+.danger-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; padding: 16px 20px; border-bottom: 1px solid var(--line);
+}
+.danger-row p { margin: 2px 0 0; }
+.danger-row form { margin: 0; flex: 0 0 auto; }
+.danger-zone .backup-note { margin: 0; padding: 12px 20px; background: #fdf7f6; }
+.danger-zone .backup-note code {
+  background: #f4e4e2; padding: 1px 5px; border-radius: 4px; font-size: 12px;
+}
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
 table.rates {
   width: 100%; border-collapse: collapse; background: var(--surface);
   border: 1px solid var(--line); border-radius: 14px; overflow: hidden;

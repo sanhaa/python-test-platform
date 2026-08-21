@@ -23,9 +23,9 @@ def _now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def student_key(name):
-    """이름을 저장소 키로 정규화한다(앞뒤 공백 제거 + 소문자)."""
-    return " ".join(str(name).split()).lower()
+def student_key(knox_id):
+    """Knox ID를 저장소 키로 정규화한다(공백 제거 + 소문자)."""
+    return "".join(str(knox_id).split()).lower()
 
 
 def _empty_db():
@@ -48,6 +48,11 @@ def _load_raw():
         return _empty_db()
     if not isinstance(data, dict) or "students" not in data:
         return _empty_db()
+    for record in data["students"].values():
+        # 이름으로 응시하던 시절의 기록을 Knox ID 형식으로 맞춰 준다.
+        if "knox_id" not in record:
+            record["knox_id"] = record.get("name", record.get("key", ""))
+        record.pop("name", None)
     return data
 
 
@@ -65,27 +70,27 @@ def _save_raw(data):
 
 
 def load_all():
-    """전체 응시자 레코드를 리스트로 돌려준다(이름 순)."""
+    """전체 응시자 레코드를 리스트로 돌려준다(Knox ID 순)."""
     with _lock:
         data = _load_raw()
     students = list(data["students"].values())
-    students.sort(key=lambda s: s.get("name", ""))
+    students.sort(key=lambda s: s.get("knox_id", "").lower())
     return students
 
 
-def get_student(name):
+def get_student(knox_id):
     with _lock:
         data = _load_raw()
-        return data["students"].get(student_key(name))
+        return data["students"].get(student_key(knox_id))
 
 
-def start_student(name):
+def start_student(knox_id):
     """응시 시작. 미제출 상태의 기존 기록은 초기화하고 새로 시작한다.
 
-    이미 제출을 마친 이름이면 기존 기록을 그대로 돌려준다(제출 기록 보호).
+    이미 제출을 마친 Knox ID면 기존 기록을 그대로 돌려준다(제출 기록 보호).
     """
-    key = student_key(name)
-    display = " ".join(str(name).split())
+    key = student_key(knox_id)
+    display = "".join(str(knox_id).split())
     with _lock:
         data = _load_raw()
         existing = data["students"].get(key)
@@ -93,7 +98,7 @@ def start_student(name):
             return existing
         record = {
             "key": key,
-            "name": display,
+            "knox_id": display,
             "answers": {},
             "submitted": False,
             "started_at": _now(),
@@ -105,9 +110,9 @@ def start_student(name):
         return record
 
 
-def save_answer(name, qid, value):
+def save_answer(knox_id, qid, value):
     """문항 하나의 답을 저장한다. 제출 완료 상태면 무시한다."""
-    key = student_key(name)
+    key = student_key(knox_id)
     with _lock:
         data = _load_raw()
         record = data["students"].get(key)
@@ -118,9 +123,9 @@ def save_answer(name, qid, value):
         return record
 
 
-def submit(name):
+def submit(knox_id):
     """제출 처리. (성공여부, 레코드) 를 돌려준다."""
-    key = student_key(name)
+    key = student_key(knox_id)
     with _lock:
         data = _load_raw()
         record = data["students"].get(key)
@@ -134,25 +139,30 @@ def submit(name):
         return True, record
 
 
-def reset_student(name):
+def _clear(record):
+    """레코드 하나를 미응시 상태로 되돌린다."""
+    record["answers"] = {}
+    record["submitted"] = False
+    record["started_at"] = _now()
+    record["submitted_at"] = None
+    record["overrides"] = {}
+
+
+def reset_student(knox_id):
     """관리자 초기화: 답안·제출 상태·수동 채점을 모두 지운다."""
-    key = student_key(name)
+    key = student_key(knox_id)
     with _lock:
         data = _load_raw()
         record = data["students"].get(key)
         if record is None:
             return False
-        record["answers"] = {}
-        record["submitted"] = False
-        record["started_at"] = _now()
-        record["submitted_at"] = None
-        record["overrides"] = {}
+        _clear(record)
         _save_raw(data)
         return True
 
 
-def delete_student(name):
-    key = student_key(name)
+def delete_student(knox_id):
+    key = student_key(knox_id)
     with _lock:
         data = _load_raw()
         if key not in data["students"]:
@@ -162,9 +172,58 @@ def delete_student(name):
         return True
 
 
-def set_override(name, qid, verdict):
+def backup():
+    """현재 저장 파일을 data/backup-<시각>.json 으로 복사해 둔다.
+
+    전체 초기화·삭제처럼 되돌릴 수 없는 작업 직전에 호출한다.
+    """
+    with _lock:
+        if not os.path.exists(DATA_FILE):
+            return None
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = os.path.join(DATA_DIR, "backup-%s.json" % stamp)
+        # 같은 초에 두 번 실행해도 앞선 백업을 덮어쓰지 않는다.
+        serial = 2
+        while os.path.exists(path):
+            path = os.path.join(DATA_DIR, "backup-%s-%d.json" % (stamp, serial))
+            serial += 1
+        with open(DATA_FILE, "r", encoding="utf-8") as src:
+            content = src.read()
+        with open(path, "w", encoding="utf-8") as dst:
+            dst.write(content)
+        return path
+
+
+def reset_all():
+    """전체 응시자의 답안을 초기화한다. 명단은 남는다. (초기화된 인원 수, 백업 경로)"""
+    with _lock:
+        data = _load_raw()
+        count = len(data["students"])
+        if not count:
+            return 0, None
+        backup_path = backup()
+        for record in data["students"].values():
+            _clear(record)
+        _save_raw(data)
+        return count, backup_path
+
+
+def delete_all():
+    """전체 응시 기록을 삭제한다. 명단까지 비운다. (삭제된 인원 수, 백업 경로)"""
+    with _lock:
+        data = _load_raw()
+        count = len(data["students"])
+        if not count:
+            return 0, None
+        backup_path = backup()
+        data["students"] = {}
+        _save_raw(data)
+        return count, backup_path
+
+
+def set_override(knox_id, qid, verdict):
     """주관식 수동 채점. verdict 는 True / False / None(자동 채점으로 되돌림)."""
-    key = student_key(name)
+    key = student_key(knox_id)
     with _lock:
         data = _load_raw()
         record = data["students"].get(key)

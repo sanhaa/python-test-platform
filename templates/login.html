@@ -14,12 +14,13 @@
   </ul>
 
   <form method="post" class="login-form">
-    <label for="name">이름</label>
-    <input type="text" id="name" name="name" placeholder="이름을 입력하세요"
-           autocomplete="off" autofocus required>
+    <label for="knox_id">Knox ID</label>
+    <input type="text" id="knox_id" name="knox_id" placeholder="Knox ID를 입력하세요"
+           autocomplete="off" autocapitalize="off" spellcheck="false"
+           autofocus required>
     <button type="submit">시작하기</button>
   </form>
 
-  <p class="hint">동명이인이 있다면 <code>홍길동(A팀)</code> 처럼 구분해서 입력해 주세요.</p>
+  <p class="hint">본인 Knox ID로 접속해 주세요. 대소문자는 구분하지 않습니다.</p>
 </main>
 {% endblock %}

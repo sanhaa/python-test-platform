@@ -30,7 +30,7 @@
     <table class="grid">
       <thead>
         <tr>
-          <th class="sticky-col">이름</th>
+          <th class="sticky-col">Knox ID</th>
           <th>상태</th>
           <th>점수</th>
           {% for q in questions %}<th class="qcol">{{ q.id }}</th>{% endfor %}
@@ -42,7 +42,7 @@
         {% for row in rows %}
         <tr>
           <td class="sticky-col name">
-            <a href="{{ url_for('admin_student', key=row.record.key) }}">{{ row.record.name }}</a>
+            <a href="{{ url_for('admin_student', key=row.record.key) }}">{{ row.record.knox_id }}</a>
           </td>
           <td>
             {% if row.record.submitted %}
@@ -66,12 +66,12 @@
           <td class="muted small">{{ row.record.submitted_at or '—' }}</td>
           <td class="row-actions">
             <form method="post" action="{{ url_for('admin_reset') }}"
-                  onsubmit="return confirm('{{ row.record.name }} 님의 답안을 초기화할까요? 되돌릴 수 없습니다.');">
+                  onsubmit="return confirm('{{ row.record.knox_id }} 님의 답안을 초기화할까요? 되돌릴 수 없습니다.');">
               <input type="hidden" name="key" value="{{ row.record.key }}">
               <button class="btn tiny">초기화</button>
             </form>
             <form method="post" action="{{ url_for('admin_delete') }}"
-                  onsubmit="return confirm('{{ row.record.name }} 님의 기록을 완전히 삭제할까요?');">
+                  onsubmit="return confirm('{{ row.record.knox_id }} 님의 기록을 완전히 삭제할까요?');">
               <input type="hidden" name="key" value="{{ row.record.key }}">
               <button class="btn tiny danger">삭제</button>
             </form>
@@ -101,5 +101,32 @@
       {% endfor %}
     </tbody>
   </table>
+
+  <h2 class="section-title danger-title">전체 초기화</h2>
+  <section class="danger-zone">
+    <div class="danger-row">
+      <div>
+        <b>전체 답안 초기화</b>
+        <p class="muted small">응시자 {{ rows|length }}명의 답안·제출 상태를 지웁니다.
+          Knox ID 명단은 남으며, 모두 처음부터 다시 응시할 수 있습니다.</p>
+      </div>
+      <form method="post" action="{{ url_for('admin_reset_all') }}"
+            onsubmit="return confirm('응시자 {{ rows|length }}명의 답안을 모두 초기화합니다.\n계속할까요?');">
+        <button class="btn" {% if not rows %}disabled{% endif %}>전체 답안 초기화</button>
+      </form>
+    </div>
+    <div class="danger-row">
+      <div>
+        <b>전체 기록 삭제</b>
+        <p class="muted small">Knox ID 명단까지 통째로 비웁니다. 새 기수 교육을 시작할 때 사용하세요.</p>
+      </div>
+      <form method="post" action="{{ url_for('admin_delete_all') }}"
+            onsubmit="return confirm('응시 기록 {{ rows|length }}건을 모두 삭제합니다.\n명단까지 사라집니다. 계속할까요?');">
+        <button class="btn danger" {% if not rows %}disabled{% endif %}>전체 기록 삭제</button>
+      </form>
+    </div>
+    <p class="muted small backup-note">두 작업 모두 실행 직전 상태를
+      <code>data/backup-날짜-시각.json</code> 으로 백업합니다.</p>
+  </section>
 </div>
 {% endblock %}
