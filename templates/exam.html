@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block body_class %}exam-page{% endblock %}
+
+{% block content %}
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <p class="eyebrow">사전 테스트</p>
+      <h2>{{ name }} 님</h2>
+    </div>
+
+    <div class="progress">
+      <div class="progress-bar"><span id="progress-fill"></span></div>
+      <p class="progress-text"><b id="answered-count">0</b> / {{ total }} 문항 완료</p>
+    </div>
+
+    <nav class="qnav" id="qnav">
+      {% for q in questions %}
+        <button type="button" class="qnav-item" data-goto="{{ q.id }}"
+                id="nav-{{ q.id }}">
+          <span class="qnum">{{ q.id }}</span>
+          <span class="qtype">{{ '객관식' if q.type == 'choice' else '주관식' }}</span>
+        </button>
+      {% endfor %}
+    </nav>
+
+    <form method="post" action="{{ url_for('submit') }}" id="submit-form">
+      <button type="submit" class="submit-btn" id="submit-btn" disabled>
+        제출하기
+      </button>
+    </form>
+    <p class="sidebar-note" id="submit-note">모든 문항에 답해야 제출할 수 있습니다.</p>
+    <a class="logout" href="{{ url_for('logout') }}">나가기</a>
+  </aside>
+
+  <main class="stage">
+    {% for q in questions %}
+    <section class="question" id="q-{{ q.id }}" data-qid="{{ q.id }}" hidden>
+      <header class="q-head">
+        <span class="q-badge">문제 {{ q.id }} / {{ total }}</span>
+        <span class="q-kind {{ q.type }}">{{ '객관식' if q.type == 'choice' else '주관식 · 빈칸 채우기' }}</span>
+      </header>
+
+      <h1 class="q-title">{{ q.title }}</h1>
+      {% if q.intro %}<p class="q-intro">{{ q.intro }}</p>{% endif %}
+      {% if q.code %}<pre class="code"><code>{{ q.code }}</code></pre>{% endif %}
+      <p class="q-prompt">{{ q.prompt }}</p>
+
+      {% if q.type == 'choice' %}
+        <ul class="options">
+          {% for opt in q.options %}
+          <li>
+            <label class="option {% if answers.get(q.id|string) == loop.index|string %}selected{% endif %}">
+              <input type="radio" name="q{{ q.id }}" value="{{ loop.index }}"
+                     data-qid="{{ q.id }}"
+                     {% if answers.get(q.id|string) == loop.index|string %}checked{% endif %}>
+              <span class="opt-num">{{ loop.index }}</span>
+              <span class="opt-text">{{ opt }}</span>
+            </label>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="text-answer">
+          <label for="input-{{ q.id }}">답</label>
+          <input type="text" id="input-{{ q.id }}" data-qid="{{ q.id }}"
+                 class="answer-input" autocomplete="off"
+                 placeholder="{{ q.placeholder }}"
+                 value="{{ answers.get(q.id|string, '') }}">
+        </div>
+      {% endif %}
+
+      <footer class="q-foot">
+        <button type="button" class="nav-btn" data-move="-1">← 이전 문제</button>
+        <span class="save-state" id="save-{{ q.id }}"></span>
+        <button type="button" class="nav-btn primary" data-move="1">다음 문제 →</button>
+      </footer>
+    </section>
+    {% endfor %}
+  </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const TOTAL = {{ total }};
+  const IDS = [{% for q in questions %}{{ q.id }}{% if not loop.last %}, {% endif %}{% endfor %}];
+  const answered = new Set();
+  let current = IDS[0];
+
+  // 새로고침 이후에도 이미 저장된 답을 반영한다.
+  {% for q in questions %}
+    {% if answers.get(q.id|string) not in (None, '') %}answered.add({{ q.id }});{% endif %}
+  {% endfor %}
+
+  function show(qid) {
+    IDS.forEach(function (id) {
+      document.getElementById('q-' + id).hidden = (id !== qid);
+      document.getElementById('nav-' + id).classList.toggle('current', id === qid);
+    });
+    current = qid;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function refresh() {
+    IDS.forEach(function (id) {
+      document.getElementById('nav-' + id)
+        .classList.toggle('done', answered.has(id));
+    });
+    const n = answered.size;
+    document.getElementById('answered-count').textContent = n;
+    document.getElementById('progress-fill').style.width =
+      Math.round(n / TOTAL * 100) + '%';
+
+    const done = n === TOTAL;
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = !done;
+    document.getElementById('submit-note').textContent = done
+      ? '모든 문항에 답했습니다. 제출하면 수정할 수 없습니다.'
+      : (TOTAL - n) + '개 문항이 남았습니다.';
+  }
+
+  function flashSaved(qid) {
+    const el = document.getElementById('save-' + qid);
+    if (!el) return;
+    el.textContent = '저장됨';
+    el.classList.add('on');
+    setTimeout(function () { el.classList.remove('on'); }, 1200);
+  }
+
+  function save(qid, value) {
+    fetch('{{ url_for("api_answer") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qid: qid, value: value })
+    }).then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) {
+          answered.clear();
+          data.answered.forEach(function (id) { answered.add(id); });
+          refresh();
+          flashSaved(qid);
+        } else if (data.error === 'already_submitted') {
+          location.href = '{{ url_for("result") }}';
+        } else if (data.error === 'not_logged_in') {
+          location.href = '{{ url_for("login") }}';
+        }
+      }).catch(function () {
+        const el = document.getElementById('save-' + qid);
+        if (el) { el.textContent = '저장 실패 — 네트워크를 확인하세요'; el.classList.add('on'); }
+      });
+  }
+
+  // 객관식: 선택 즉시 저장
+  document.querySelectorAll('.options input[type=radio]').forEach(function (input) {
+    input.addEventListener('change', function () {
+      const qid = parseInt(input.dataset.qid, 10);
+      document.querySelectorAll('#q-' + qid + ' .option')
+        .forEach(function (l) { l.classList.remove('selected'); });
+      input.closest('.option').classList.add('selected');
+      save(qid, input.value);
+    });
+  });
+
+  // 주관식: 입력이 멎으면 저장 + 포커스가 빠질 때 한 번 더
+  document.querySelectorAll('.answer-input').forEach(function (input) {
+    let timer = null;
+    const qid = parseInt(input.dataset.qid, 10);
+    const push = function () { save(qid, input.value.trim()); };
+    input.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(push, 500);
+    });
+    input.addEventListener('blur', function () { clearTimeout(timer); push(); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); move(1); }
+    });
+  });
+
+  function move(step) {
+    const idx = IDS.indexOf(current);
+    const next = idx + step;
+    if (next < 0 || next >= IDS.length) return;
+    show(IDS[next]);
+  }
+
+  document.querySelectorAll('[data-move]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      move(parseInt(btn.dataset.move, 10));
+    });
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      show(parseInt(btn.dataset.goto, 10));
+    });
+  });
+
+  document.getElementById('submit-form').addEventListener('submit', function (e) {
+    if (answered.size !== TOTAL) { e.preventDefault(); return; }
+    if (!confirm('제출하면 답안을 수정할 수 없습니다. 제출할까요?')) e.preventDefault();
+  });
+
+  // 첫 화면은 아직 답하지 않은 가장 앞 문항으로 연다.
+  const firstUnanswered = IDS.find(function (id) { return !answered.has(id); });
+  show(firstUnanswered === undefined ? IDS[0] : firstUnanswered);
+  refresh();
+})();
+</script>
+{% endblock %}

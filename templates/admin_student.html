@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block page_title %}{{ record.name }} · 관리자{% endblock %}
+{% block body_class %}admin-page{% endblock %}
+
+{% block content %}
+<div class="admin-wrap narrow">
+  <header class="admin-head">
+    <div>
+      <p class="eyebrow"><a href="{{ url_for('admin') }}">← 응시 현황</a></p>
+      <h1>{{ record.name }}</h1>
+      <p class="lead small">
+        {% if record.submitted %}
+          제출 완료 · {{ record.submitted_at }} ·
+          <b>{{ graded.score }}</b> / {{ graded.max_score }}점
+        {% else %}
+          아직 제출하지 않았습니다 (시작 {{ record.started_at }})
+        {% endif %}
+      </p>
+    </div>
+    <div class="admin-actions">
+      <form method="post" action="{{ url_for('admin_reset') }}"
+            onsubmit="return confirm('{{ record.name }} 님의 답안을 초기화할까요?');">
+        <input type="hidden" name="key" value="{{ record.key }}">
+        <input type="hidden" name="next" value="{{ url_for('admin_student', key=record.key) }}">
+        <button class="btn">답안 초기화</button>
+      </form>
+    </div>
+  </header>
+
+  <ol class="review">
+    {% for q in questions %}
+    {% set d = graded.details[loop.index0] %}
+    <li class="review-item">
+      <div class="review-head">
+        <span class="q-badge">문제 {{ q.id }}</span>
+        <span class="q-kind {{ q.type }}">{{ '객관식' if q.type == 'choice' else '주관식' }}</span>
+        <span class="verdict {{ 'ok' if d.correct else 'no' }}">{{ 'O 정답' if d.correct else 'X 오답' }}</span>
+        {% if d.overridden %}<span class="tag manual">수동 채점</span>{% endif %}
+      </div>
+      <h2>{{ q.title }}</h2>
+      {% if q.code %}<pre class="code"><code>{{ q.code }}</code></pre>{% endif %}
+      <p class="q-prompt">{{ q.prompt }}</p>
+
+      <div class="answer-compare">
+        <p><span class="label">응시자 답</span> <b>{{ d.answer_text }}</b></p>
+        <p><span class="label">정답</span> {{ d.correct_text }}</p>
+      </div>
+
+      {% if q.type == 'text' %}
+      <form method="post" action="{{ url_for('admin_override') }}" class="override">
+        <input type="hidden" name="key" value="{{ record.key }}">
+        <input type="hidden" name="qid" value="{{ q.id }}">
+        <span class="label">수동 채점</span>
+        <button class="btn tiny {% if d.overridden and d.correct %}on{% endif %}"
+                name="verdict" value="correct">정답 처리</button>
+        <button class="btn tiny danger {% if d.overridden and not d.correct %}on{% endif %}"
+                name="verdict" value="wrong">오답 처리</button>
+        <button class="btn tiny ghost" name="verdict" value="auto">자동 채점으로</button>
+        <span class="muted small">자동 채점 결과: {{ 'O' if d.auto else 'X' }}</span>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+{% endblock %}

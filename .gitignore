@@ -1,0 +1,15 @@
+# 응시 기록 — 교육생 이름과 답안이 들어가므로 커밋하지 않는다
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Windows / WSL
+*:Zone.Identifier
+.DS_Store
+
+# 원본 문제 파일
+*.docx

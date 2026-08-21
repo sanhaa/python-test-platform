@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block page_title %}관리자 · {{ title }}{% endblock %}
+{% block body_class %}admin-page{% endblock %}
+
+{% block content %}
+<div class="admin-wrap">
+  <header class="admin-head">
+    <div>
+      <p class="eyebrow">관리자</p>
+      <h1>{{ title }} — 응시 현황</h1>
+    </div>
+    <div class="admin-actions">
+      <a class="btn ghost" href="{{ url_for('admin_export') }}">CSV 내려받기</a>
+      <a class="btn ghost" href="{{ url_for('logout') }}">나가기</a>
+    </div>
+  </header>
+
+  <section class="stats">
+    <div class="stat"><span class="stat-num">{{ rows|length }}</span><span class="stat-label">응시자</span></div>
+    <div class="stat"><span class="stat-num">{{ submitted_count }}</span><span class="stat-label">제출 완료</span></div>
+    <div class="stat"><span class="stat-num">{{ rows|length - submitted_count }}</span><span class="stat-label">진행 중</span></div>
+    <div class="stat"><span class="stat-num">{{ avg }}</span><span class="stat-label">평균 점수</span></div>
+  </section>
+
+  <h2 class="section-title">응시자별 결과</h2>
+  {% if not rows %}
+    <p class="empty">아직 접속한 응시자가 없습니다.</p>
+  {% else %}
+  <div class="table-scroll">
+    <table class="grid">
+      <thead>
+        <tr>
+          <th class="sticky-col">이름</th>
+          <th>상태</th>
+          <th>점수</th>
+          {% for q in questions %}<th class="qcol">{{ q.id }}</th>{% endfor %}
+          <th>제출 시각</th>
+          <th>관리</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="sticky-col name">
+            <a href="{{ url_for('admin_student', key=row.record.key) }}">{{ row.record.name }}</a>
+          </td>
+          <td>
+            {% if row.record.submitted %}
+              <span class="pill done">제출</span>
+            {% else %}
+              <span class="pill wip">{{ row.answered }}/{{ total }} 진행</span>
+            {% endif %}
+          </td>
+          <td class="score">
+            {% if row.record.submitted %}
+              <b>{{ row.graded.score }}</b><span class="muted">/{{ max_score }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          {% for d in row.graded.details %}
+            <td class="mark {{ 'ok' if d.correct else 'no' }}
+                       {% if not row.record.submitted %}pending{% endif %}">
+              {% if row.record.submitted %}{{ 'O' if d.correct else 'X' }}{% else %}·{% endif %}
+              {%- if d.overridden %}<sup title="수동 채점">*</sup>{% endif -%}
+            </td>
+          {% endfor %}
+          <td class="muted small">{{ row.record.submitted_at or '—' }}</td>
+          <td class="row-actions">
+            <form method="post" action="{{ url_for('admin_reset') }}"
+                  onsubmit="return confirm('{{ row.record.name }} 님의 답안을 초기화할까요? 되돌릴 수 없습니다.');">
+              <input type="hidden" name="key" value="{{ row.record.key }}">
+              <button class="btn tiny">초기화</button>
+            </form>
+            <form method="post" action="{{ url_for('admin_delete') }}"
+                  onsubmit="return confirm('{{ row.record.name }} 님의 기록을 완전히 삭제할까요?');">
+              <input type="hidden" name="key" value="{{ row.record.key }}">
+              <button class="btn tiny danger">삭제</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="legend">O 정답 · X 오답 · · 미제출 · <sup>*</sup> 강사가 수동으로 채점한 문항</p>
+  {% endif %}
+
+  <h2 class="section-title">문항별 정답률 <span class="muted small">(제출자 {{ submitted_count }}명 기준)</span></h2>
+  <table class="rates">
+    <tbody>
+      {% for pq in per_question %}
+      <tr>
+        <td class="rate-id">{{ pq.id }}</td>
+        <td class="rate-title">{{ pq.title }}
+          <span class="q-kind {{ pq.type }} mini">{{ '객관식' if pq.type == 'choice' else '주관식' }}</span>
+        </td>
+        <td class="rate-bar">
+          <div class="bar"><span style="width: {{ pq.rate }}%"></span></div>
+        </td>
+        <td class="rate-num">{{ pq.rate }}% <span class="muted small">({{ pq.hits }}/{{ submitted_count }})</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
